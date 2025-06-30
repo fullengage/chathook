@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Chatwoot – Teste PHP Proxy</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f5f5f5; margin: 0; padding: 0; }
+        .container { max-width: 900px; margin: 40px auto; background: #fff; border-radius: 8px; box-shadow: 0 2px 8px #0001; padding: 32px 24px; }
+        h1 { margin-bottom: 8px; }
+        .stats { display: flex; gap: 24px; margin-bottom: 24px; }
+        .stat { flex: 1; background: #f7fafd; border-radius: 6px; padding: 12px 20px; }
+        .conversations { margin-bottom: 32px; }
+        .conversation-item { padding: 16px; border-bottom: 1px solid #f0f0f0; cursor: pointer; }
+        .conversation-item:hover { background: #f6f8fa; }
+        .selected { background: #e3f2fd !important; }
+        .conversation-contact { font-weight: bold; }
+        .conversation-preview { font-size: 13px; color: #555; margin-top: 3px; }
+        .conversation-status { font-size: 11px; text-transform: uppercase; margin-left: 8px; }
+        .status-open { color: #1976d2; }
+        .status-resolved { color: #388e3c; }
+        .status-pending { color: #f57c00; }
+        .message-form textarea { width: 100%; min-height: 60px; margin-top: 10px; }
+        .message-form button { background: #1976d2; color: #fff; border: none; padding: 10px 18px; border-radius: 4px; cursor: pointer; margin-top: 8px;}
+        .message-form button:hover { background: #1565c0;}
+        .loading { color: #888; text-align: center; padding: 32px 0;}
+        .error { background: #ffebee; color: #b71c1c; padding: 8px 16px; border-radius: 4px; margin-bottom: 16px;}
+        .messages { background: #fafafa; padding: 12px; margin-bottom: 8px; border-radius: 6px; }
+        .message-bubble { margin-bottom: 10px; padding: 8px 12px; border-radius: 6px; background: #e3f2fd;}
+        .message-bubble.agent { background: #c8e6c9;}
+        .message-bubble span { font-size: 11px; color: #999; display: block;}
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Conversas (MVP Proxy)</h1>
+    <div id="error-message" class="error" style="display:none;"></div>
+    <div class="stats">
+        <div class="stat">Abertas: <span id="abertas">-</span></div>
+        <div class="stat">Pendentes: <span id="pendentes">-</span></div>
+        <div class="stat">Resolvidas: <span id="resolvidas">-</span></div>
+    </div>
+    <div class="conversations">
+        <h2 style="margin-bottom:8px;">Conversas Recentes</h2>
+        <div id="conversations-list" class="loading">Carregando conversas...</div>
+    </div>
+    <div id="messages-block" style="display:none;">
+        <h3>Mensagens da Conversa #<span id="conversation-id-label"></span></h3>
+        <div id="messages-list" class="messages"></div>
+        <form class="message-form" onsubmit="enviarMensagem(event)">
+            <textarea id="message-text" placeholder="Digite sua mensagem..."></textarea>
+            <br/>
+            <button type="submit">Enviar</button>
+        </form>
+    </div>
+</div>
+<script>
+const ENDPOINT_CONVERSAS = 'https://fullweb.com.br/chathook/conversas.php';
+const ENDPOINT_MENSAGENS = 'https://fullweb.com.br/chathook/mensagens.php';
+const ENDPOINT_RESPONDER = 'https://fullweb.com.br/chathook/responder.php';
+
+let conversas = [];
+let conversaSelecionada = null;
+
+// Carregar conversas ao iniciar
+window.onload = function() {
+    carregarConversas();
+};
+
+async function carregarConversas() {
+    document.getElementById('conversations-list').innerHTML = '<div class="loading">Carregando conversas...</div>';
+    try {
+        const res = await fetch(ENDPOINT_CONVERSAS);
+        const data = await res.json();
+        conversas = (data.data?.payload || data.payload || []);
+        renderizarConversas();
+        atualizarStats(conversas);
+    } catch (err) {
+        mostrarErro("Erro ao carregar conversas: " + (err.message || err));
+    }
+}
+
+function renderizarConversas() {
+    const lista = document.getElementById('conversations-list');
+    if (!conversas.length) {
+        lista.innerHTML = '<div class="loading">Nenhuma conversa encontrada.</div>';
+        return;
+    }
+    lista.innerHTML = '';
+    conversas.forEach(conversa => {
+        const item = document.createElement('div');
+        item.className = 'conversation-item' + (conversaSelecionada === conversa.id ? ' selected' : '');
+        item.onclick = () => selecionarConversa(conversa.id);
+        const contato = conversa.meta?.sender?.name || conversa.meta?.sender?.phone_number || 'Contato não identificado';
+        const ultimaMsg = (conversa.messages?.[0]?.content || 'Sem mensagens').substring(0, 64);
+        item.innerHTML = `
+            <div class="conversation-contact">${contato}
+                <span class="conversation-status status-${conversa.status}">${conversa.status}</span>
+            </div>
+            <div class="conversation-preview">${ultimaMsg}</div>
+        `;
+        lista.appendChild(item);
+    });
+}
+
+function atualizarStats(conversas) {
+    let abertas = 0, pendentes = 0, resolvidas = 0;
+    conversas.forEach(c => {
+        if (c.status === 'open') abertas++;
+        else if (c.status === 'pending') pendentes++;
+        else if (c.status === 'resolved') resolvidas++;
+    });
+    document.getElementById('abertas').textContent = abertas;
+    document.getElementById('pendentes').textContent = pendentes;
+    document.getElementById('resolvidas').textContent = resolvidas;
+}
+
+async function selecionarConversa(conversationId) {
+    conversaSelecionada = conversationId;
+    renderizarConversas();
+    document.getElementById('messages-block').style.display = 'block';
+    document.getElementById('conversation-id-label').textContent = conversationId;
+    document.getElementById('messages-list').innerHTML = '<div class="loading">Carregando mensagens...</div>';
+    try {
+        const res = await fetch(`${ENDPOINT_MENSAGENS}?id=${conversationId}`);
+        const data = await res.json();
+        const mensagens = data.data?.payload || data.payload || [];
+        renderizarMensagens(mensagens);
+    } catch (err) {
+        mostrarErro("Erro ao carregar mensagens: " + (err.message || err));
+        document.getElementById('messages-list').innerHTML = '';
+    }
+}
+
+function renderizarMensagens(mensagens) {
+    const lista = document.getElementById('messages-list');
+    if (!mensagens.length) {
+        lista.innerHTML = '<div class="loading">Nenhuma mensagem ainda.</div>';
+        return;
+    }
+    lista.innerHTML = '';
+    mensagens.forEach(msg => {
+        const div = document.createElement('div');
+        div.className = 'message-bubble' + (msg.sender_type === 'Agent' ? ' agent' : '');
+        div.innerHTML = `${msg.content || '<i>Mensagem sem texto</i>'}<span>${msg.created_at ? new Date(msg.created_at * 1000).toLocaleString('pt-BR') : ''}</span>`;
+        lista.appendChild(div);
+    });
+}
+
+async function enviarMensagem(event) {
+    event.preventDefault();
+    const texto = document.getElementById('message-text').value.trim();
+    if (!conversaSelecionada || !texto) {
+        alert('Selecione uma conversa e digite a mensagem!');
+        return;
+    }
+    try {
+        const res = await fetch(ENDPOINT_RESPONDER, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: `id=${encodeURIComponent(conversaSelecionada)}&mensagem=${encodeURIComponent(texto)}`
+        });
+        if (res.ok) {
+            document.getElementById('message-text').value = '';
+            selecionarConversa(conversaSelecionada); // Recarrega mensagens
+        } else {
+            const erro = await res.json();
+            mostrarErro('Erro ao enviar mensagem: ' + (erro.erro || 'Erro desconhecido'));
+        }
+    } catch (err) {
+        mostrarErro("Erro ao enviar mensagem: " + (err.message || err));
+    }
+}
+
+function mostrarErro(msg) {
+    const erroDiv = document.getElementById('error-message');
+    erroDiv.innerHTML = msg;
+    erroDiv.style.display = 'block';
+    setTimeout(() => { erroDiv.style.display = 'none'; }, 6000);
+}
+</script>
+</body>
+</html>
