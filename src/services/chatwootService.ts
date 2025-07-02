@@ -1,6 +1,6 @@
 // Configuração de URLs - produção e desenvolvimento
-const CHATWOOT_API_URL = 'https://chat.fullweb.com.br/api/v1';
-const CHATWOOT_TOKEN = 'tNhW1BVczaPLXihqyKi8T3ki'; // token fornecido
+const CHATWOOT_API_URL = 'https://SEU_DOMINIO_CHATWOOT.com/api/v1';
+const CHATWOOT_TOKEN = 'SEU_TOKEN_CHATWOOT_AQUI'; // token fornecido
 
 // URL do proxy local (apenas para desenvolvimento)
 const CHATWOOT_PROXY_URL = '/api/chatwoot';
